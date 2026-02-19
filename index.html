@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dashboard Layout</title>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin=""/>
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header (será reemplazado por FiltersManager) -->
+        <header class="header">
+            <h1>Secretaría de Infraestructura Física</h1>
+        </header>
+
+        <!-- Area Contenedor (Mapa, Cards y Gráficas) -->
+        <div class="area-contenedor">
+            <!-- Main Content Area -->
+            <div class="main-content">
+                <!-- Map Section -->
+                <section class="map-section" id="mapContainer">
+                    <!-- El mapa se generará aquí con JavaScript -->
+                </section>
+
+                <!-- Right Side Grid -->
+                <div class="right-grid">
+                    <!-- Cards Row -->
+                    <div class="cards-row" id="cards-container">
+                        <!-- Las cards se generarán automáticamente -->
+                    </div>
+
+                    <!-- Graphics Row -->
+                    <div class="graphics-row">
+                        <div class="graphic" id="subregionChart">
+                            <!-- Gráfica de subregiones se generará aquí -->
+                        </div>
+                        <div class="graphic" id="municipalityChart">
+                            <!-- Gráfica de municipios se generará aquí -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table Section -->
+        <section class="table-section" id="jacTable">
+            <!-- La tabla se generará aquí con JavaScript -->
+        </section>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+            crossorigin=""></script>
+    
+    <script src="data.js"></script>
+    <script src="cardsManager.js"></script>
+    <script src="tableManager.js"></script>
+    <script src="mapManager.js"></script>
+    <script src="chartsManager.js"></script>
+    <script src="filtersManager.js"></script>
+    <script src="expandIconsManager.js"></script>
+    <script src="detailModal.js"></script>
+    <script src="photoModalManager.js"></script>
+    <script>
+        // Variables globales
+        let mapManager;
+        let tableManager;
+        let chartsManager;
+        let cardsManager;
+        let filtersManager;
+        let expandIconsManager;
+        
+        // Inicializar todos los componentes
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('🚀 Inicializando dashboard...');
+            
+            // Inicializar FiltersManager primero (crea el header con filtros)
+            filtersManager = new FiltersManager(jacData, {
+                containerId: 'filters-container',
+                showClearButton: true,
+                showExportButton: true,
+                autoUpdate: true
+            });
+            
+            // Inicializar CardsManager
+            cardsManager = new CardsManager('cards-container', jacData, {
+                theme: 'default',
+                showIcons: true,
+                showAnimations: true
+            });
+            
+            // Inicializar mapa con el archivo GeoJSON de rutas
+            mapManager = new MapManager('mapContainer', 'localizacion.geojson');
+            
+            // Inicializar manager de gráficas
+            chartsManager = new ChartsManager(jacData);
+            
+            // Remover mapa base para fondo transparente (inmediato)
+            setTimeout(() => {
+                mapManager.removeBaseLayers();
+            }, 500);
+            
+            // Cargar polígonos de municipios después de 1 segundo
+            setTimeout(async () => {
+                await mapManager.loadPolygonGeoJSON('municipios.geojson', 'municipios', {
+                    styleBySubregion: false, // Cambiar a true para colores por subregión
+                    onClick: (feature, layer, e) => {
+                        console.log('Municipio clickeado:', feature.properties.MPIO_NOMBRE);
+                    }
+                });
+                console.log('✅ Capa de municipios cargada');
+                
+                // Cambiar a fondo transparente automáticamente
+                cambiarEstiloMapa('transparente');
+            }, 1000);
+            
+            // Inicializar tabla
+            tableManager = new TableManager('jacTable', jacData);
+            
+            // Inicializar gráficas después de que el DOM esté listo
+            setTimeout(() => {
+                chartsManager.initializeCharts();
+                updateStatCards();
+                integrateAllComponents();
+                
+                // Conectar FiltersManager con otros componentes
+                filtersManager.connectManagers({
+                    mapManager: mapManager,
+                    tableManager: tableManager,
+                    chartsManager: chartsManager,
+                    cardsManager: cardsManager
+                });
+                
+                // Inicializar íconos de expansión
+                expandIconsManager = new ExpandIconsManager();
+                
+                console.log('✅ Dashboard completamente inicializado con filtros');
+            }, 1500);
+        });
+
+        // Función para actualizar las tarjetas de estadísticas
+        function updateStatCards() {
+            // Ahora se maneja automáticamente por CardsManager
+            if (cardsManager) {
+                cardsManager.updateValues();
+            }
+            console.log('📊 Tarjetas de estadísticas actualizadas');
+        }
+
+        // Función para integrar todos los componentes
+        function integrateAllComponents() {
+            // Conectar gráficas con el mapa
+            chartsManager.integrateWithMap(mapManager);
+            
+            // Conectar tabla con mapa (función existente mejorada)
+            conectarTablaConMapa();
+            
+            // Conectar filtros de tabla con gráficas
+            const originalApplyFilters = tableManager.applyFilters;
+            tableManager.applyFilters = function(filteredData) {
+                // Aplicar filtros a la tabla
+                this.filteredData = filteredData || this.data;
+                this.updateTable();
+                
+                // Actualizar gráficas con datos filtrados
+                if (chartsManager && typeof chartsManager.updateCharts === 'function') {
+                    chartsManager.updateCharts(this.filteredData);
+                }
+                
+                // Actualizar cards
+                if (cardsManager && typeof cardsManager.applyFilters === 'function') {
+                    cardsManager.applyFilters(this.filteredData);
+                }
+                
+                updateStatCards();
+            };
+            
+            console.log('🔗 Todos los componentes integrados');
+        }
+        
+        // ============ FUNCIONES GLOBALES PARA EL MAPA ============
+        
+        // Agregar una polyline desde la consola
+        function agregarPolyline(latlngs, color = '#2fa87a') {
+            return mapManager.addPolylineWithPopup(
+                latlngs,
+                `<strong>Polyline personalizada</strong><br>Color: ${color}`,
+                { color: color, weight: 5 }
+            );
+        }
+        
+        // Limpiar todas las polylines
+        function limpiarPolylines() {
+            mapManager.clearPolylines();
+        }
+        
+        // Calcular longitud de una ruta
+        function calcularLongitud(latlngs) {
+            const longitud = mapManager.getPolylineLength(latlngs);
+            console.log(`Longitud total: ${longitud.toFixed(2)} metros`);
+            return longitud;
+        }
+        
+        // ============ FUNCIONES PARA POLÍGONOS (MUNICIPIOS) ============
+        
+        // Mostrar/Ocultar capa de municipios
+        function toggleMunicipios(mostrar = true) {
+            mapManager.togglePolygonLayer('municipios', mostrar);
+            console.log(`Municipios ${mostrar ? 'mostrados' : 'ocultados'}`);
+        }
+        
+        // Resaltar un municipio específico
+        function resaltarMunicipio(nombre) {
+            mapManager.highlightMunicipio(nombre);
+            console.log(`Municipio resaltado: ${nombre}`);
+        }
+        
+        // Resetear estilos de municipios
+        function resetearMunicipios() {
+            mapManager.resetMunicipiosStyle();
+            console.log('Estilos de municipios reseteados');
+        }
+        
+        // Filtrar municipios por subregión
+        function filtrarPorSubregion(subregion) {
+            mapManager.filterMunicipiosBySubregion(subregion);
+            console.log(`Filtrado por subregión: ${subregion || 'Todas'}`);
+        }
+        
+        // Obtener lista de municipios
+        function listarMunicipios() {
+            const municipios = mapManager.getMunicipiosList();
+            console.table(municipios);
+            return municipios;
+        }
+        
+        // ============ FUNCIONES ÚTILES DE INTEGRACIÓN ============
+        
+        // Resaltar municipio al hacer clic en la tabla
+        function conectarTablaConMapa() {
+            setTimeout(() => {
+                document.querySelectorAll('.data-table tbody tr').forEach((row, index) => {
+                    row.addEventListener('click', () => {
+                        const jac = tableManager ? tableManager.filteredData[index] : jacData[index];
+                        if (jac && jac.municipio) {
+                            resaltarMunicipio(jac.municipio);
+                            // También resaltar en las gráficas si es necesario
+                            if (window.ChartsUtils && window.ChartsUtils.highlightData) {
+                                window.ChartsUtils.highlightData(chartsManager, jac.municipio);
+                            }
+                        }
+                    });
+                });
+                console.log('✅ Tabla conectada con el mapa y gráficas');
+            }, 2000);
+        }
+        
+        // ============ FUNCIONES PARA LAS GRÁFICAS ============
+        
+        // Actualizar gráficas con filtros específicos
+        function actualizarGraficas(filtros = {}) {
+            if (chartsManager) {
+                chartsManager.filterData(filtros);
+                updateStatCards();
+            }
+        }
+        
+        // Exportar datos de gráficas
+        function exportarDatosGraficas() {
+            if (chartsManager) {
+                chartsManager.exportChartData();
+            }
+        }
+        
+        // Mostrar estadísticas en consola
+        function mostrarEstadisticas() {
+            if (chartsManager && window.ChartsUtils) {
+                return window.ChartsUtils.showStats(chartsManager);
+            }
+        }
+        
+        // Resetear todas las visualizaciones
+        function resetearDashboard() {
+            if (mapManager) {
+                mapManager.resetMunicipiosStyle();
+            }
+            if (chartsManager) {
+                chartsManager.updateCharts(jacData);
+            }
+            if (filtersManager) {
+                filtersManager.clearFilters();
+            }
+            updateStatCards();
+            console.log('🔄 Dashboard reseteado');
+        }
+        
+        // ============ FUNCIÓN PARA CAMBIAR ESTILO DEL MAPA BASE ============
+        
+        // Cambiar estilo del mapa base
+        function cambiarEstiloMapa(estilo = 'osm') {
+            // Eliminar capa actual
+            mapManager.map.eachLayer((layer) => {
+                if (layer instanceof L.TileLayer) {
+                    mapManager.map.removeLayer(layer);
+                }
+            });
+            
+            const container = document.querySelector('.leaflet-container');
+            
+            switch(estilo) {
+                case 'transparente':
+                    // Fondo transparente
+                    container.style.backgroundColor = 'transparent';
+                    console.log('✅ Mapa base: Transparente');
+                    break;
+                    
+                case 'blanco':
+                    // Fondo blanco sólido
+                    container.style.backgroundColor = 'white';
+                    console.log('✅ Mapa base: Blanco');
+                    break;
+                    
+                case 'verde':
+                    // Fondo verde claro
+                    container.style.backgroundColor = '#f8fcfa';
+                    console.log('✅ Mapa base: Verde claro');
+                    break;
+                    
+                case 'cartodb-light':
+                    // CartoDB Light sin etiquetas
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+                        attribution: '© OpenStreetMap, © CartoDB',
+                        maxZoom: 19
+                    }).addTo(mapManager.map);
+                    container.style.backgroundColor = '#f8f8f8';
+                    console.log('✅ Mapa base: CartoDB Light');
+                    break;
+                    
+                case 'cartodb-dark':
+                    // CartoDB Dark
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+                        attribution: '© OpenStreetMap, © CartoDB',
+                        maxZoom: 19
+                    }).addTo(mapManager.map);
+                    container.style.backgroundColor = '#2c3e50';
+                    console.log('✅ Mapa base: CartoDB Dark');
+                    break;
+                    
+                case 'gris':
+                    // Escala de grises
+                    L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png', {
+                        maxZoom: 20,
+                        attribution: '© Stadia Maps'
+                    }).addTo(mapManager.map);
+                    console.log('✅ Mapa base: Escala de grises');
+                    break;
+                    
+                case 'osm':
+                default:
+                    // OpenStreetMap (predeterminado)
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors',
+                        maxZoom: 19
+                    }).addTo(mapManager.map);
+                    container.style.backgroundColor = '#f0f0f0';
+                    console.log('✅ Mapa base: OpenStreetMap');
+                    break;
+            }
+        }
+        
+
+    </script>
+</body>
+</html>
