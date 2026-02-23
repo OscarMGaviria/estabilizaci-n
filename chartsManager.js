@@ -1,25 +1,25 @@
 // chartsManager.js - Gráficas adaptadas para Tramos de Vías
 class ChartsManager {
     constructor(data) {
-        this.data = data;
-        this.charts = {};
+        this.data              = data;
+        this.baseData          = data;  // dataset completo: nunca se filtra
+        this.charts            = {};
+        this.selectedSubregion = null;
+        this._pushing          = false; // flag anti-bucle
         this.colors = {
-            primary: '#2fa87a',
-            secondary: '#1a7a5e',
-            accent: '#b8d4c8',
-            light: '#f8fcfa',
-            gradient1: '#2fa87a',
-            gradient2: '#1a7a5e'
+            primary:   '#018d38',
+            secondary: '#0b5640',
+            accent:    '#b3d9c4',
+            light:     '#f4fbf7'
         };
     }
 
     initializeCharts() {
         this.renderSubregionChart();
         this.renderMunicipalityChart();
-        console.log('✅ Gráficas de tramos inicializadas');
+        console.log('Gráficas de tramos inicializadas');
     }
 
-    // Longitud total por subregión — campo "Longitud(m)" contiene valores en km
     getSubregionData() {
         const totals = {};
         this.data.forEach(item => {
@@ -31,11 +31,11 @@ class ChartsManager {
             .sort((a, b) => b.total - a.total);
     }
 
-    // Longitud total por municipio — campo "Longitud(m)" contiene valores en km
-    getMunicipalityData() {
+    _getAllSubregionData() {
+        const source = this.baseData || window.jacData || this.data;
         const totals = {};
-        this.data.forEach(item => {
-            const key = item.MPIO_NOMBRE || 'Sin municipio';
+        source.forEach(item => {
+            const key = item.SUBREGION || item.SUBREGION_1 || 'Sin subregión';
             totals[key] = (totals[key] || 0) + (parseFloat(item['Longitud(m)']) || 0);
         });
         return Object.entries(totals)
@@ -48,33 +48,21 @@ class ChartsManager {
         for (let i = steps; i >= 0; i--) {
             const value = (maxValue / steps) * i;
             const label = value >= 100 ? Math.round(value) : value.toFixed(1);
-            labels.push(`
-                <div style="font-size:11px;color:#1a7a5e;line-height:1;padding:2px 0;">
-                    ${label}
-                </div>
-            `);
+            labels.push('<div style="font-size:11px;color:#0b5640;line-height:1;padding:2px 0;">' + label + ' km</div>');
         }
         return labels.join('');
     }
 
-    animateBars(duration = 1000) {
-        const startTime = performance.now();
-        const verticalBars = document.querySelectorAll('.bar[data-target-height]');
+    animateBars(duration) {
+        duration = duration || 800;
+        const startTime      = performance.now();
+        const verticalBars   = document.querySelectorAll('.bar[data-target-height]');
         const horizontalBars = document.querySelectorAll('.bar-fill[data-target-width]');
-
-        const animate = (now) => {
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const ease = 1 - Math.pow(1 - progress, 3);
-
-            verticalBars.forEach(bar => {
-                bar.style.height = `${parseFloat(bar.dataset.targetHeight) * ease}%`;
-            });
-            horizontalBars.forEach(bar => {
-                bar.style.width = `${parseFloat(bar.dataset.targetWidth) * ease}%`;
-            });
-
-            if (progress < 1) requestAnimationFrame(animate);
+        const animate = function(now) {
+            const ease = 1 - Math.pow(1 - Math.min((now - startTime) / duration, 1), 3);
+            verticalBars.forEach(function(b)   { b.style.height = (parseFloat(b.dataset.targetHeight) * ease) + '%'; });
+            horizontalBars.forEach(function(b) { b.style.width  = (parseFloat(b.dataset.targetWidth)  * ease) + '%'; });
+            if (ease < 1) requestAnimationFrame(animate);
         };
         requestAnimationFrame(animate);
     }
@@ -83,168 +71,192 @@ class ChartsManager {
         const container = document.querySelector('.graphics-row .graphic:first-child');
         if (!container) return;
 
-        const data = this.getSubregionData();
-        if (!data.length) return;
+        const allData = this._getAllSubregionData();
+        if (!allData.length) return;
 
-        const maxValue = Math.max(...data.map(d => d.total));
+        const maxValue = Math.max.apply(null, allData.map(function(d) { return d.total; }));
+        const selected = this.selectedSubregion;
 
-        container.innerHTML = `
-            <div class="chart-container" style="position:relative;width:100%;height:100%;box-sizing:border-box;">
-                <div style="position:absolute;top:0;left:0;right:0;height:28px;padding:4px 10px;font-size:13px;font-weight:600;color:#1a7a5e;border-bottom:1px solid #e0f0e8;box-sizing:border-box;z-index:5;">
-                Longitud por subregión (km)
-                </div>
-                <div style="position:absolute;top:28px;left:0;right:0;bottom:0;display:flex;box-sizing:border-box;">
-                    <div class="y-axis" style="width:40px;display:flex;flex-direction:column;justify-content:space-between;padding:10px 6px;font-size:11px;color:#1a7a5e;text-align:right;border-right:1px solid #e0f0e8;box-sizing:border-box;">
-                        ${this.renderYAxis(maxValue)}
-                    </div>
-                    <div class="chart-content" style="flex:1;display:flex;align-items:flex-end;justify-content:space-around;padding:10px;gap:8px;overflow:visible;box-sizing:border-box;">
-                        ${data.map(item => {
-                            const height = (item.total / maxValue) * 100;
-                            return `
-                                <div class="bar-container" style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;min-width:0;position:relative;">
-                                    <div class="chart-tooltip" style="position:absolute;bottom:calc(${height}% + 8px);background:rgba(26,122,94,0.95);color:white;padding:6px 8px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(5px);transition:all 0.2s ease;z-index:20;box-shadow:0 4px 10px rgba(0,0,0,0.25);text-align:center;">
-                                        ${item.name}<br>${item.total.toFixed(2)} km
-                                    </div>
-                                    <div class="bar" data-target-height="${height}"
-                                        style="width:100%;height:0%;background:linear-gradient(180deg,${this.colors.primary} 0%,${this.colors.secondary} 100%);border-radius:6px 6px 0 0;margin-top:auto;transition:all 0.25s ease;cursor:pointer;box-shadow:0 2px 4px rgba(47,168,122,0.2);"
-                                        onmouseover="this.style.transform='scaleY(1.05)';this.previousElementSibling.style.opacity='1';this.previousElementSibling.style.transform='translateY(0)';"
-                                        onmouseout="this.style.transform='scaleY(1)';this.previousElementSibling.style.opacity='0';this.previousElementSibling.style.transform='translateY(5px)';">
-                                    </div>
-                                    <div class="bar-label" style="margin-top:6px;font-size:10px;font-weight:500;color:#1a7a5e;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px;">
-                                        ${item.name}
-                                    </div>
-                                </div>`;
-                        }).join('')}
-                    </div>
-                </div>
-            </div>`;
-        this.animateBars(1000);
+        let barsHTML = '';
+        allData.forEach(function(item) {
+            const height      = (item.total / maxValue) * 100;
+            const isSelected  = selected === item.name;
+            const isOther     = selected !== null && !isSelected;
+            const opacity     = isOther ? '0.22' : '1';
+            const barBg       = isSelected
+                ? 'linear-gradient(180deg,#3AF9A2 0%,#018d38 100%)'
+                : 'linear-gradient(180deg,#018d38 0%,#0b5640 100%)';
+            const labelWeight = isSelected ? '700' : '500';
+            const labelColor  = isOther ? '#aac8b4' : '#0b5640';
+            const ringStyle   = isSelected
+                ? 'box-shadow:0 0 0 2.5px #018d38,0 2px 8px rgba(1,141,56,0.35);'
+                : 'box-shadow:0 2px 4px rgba(1,141,56,0.2);';
+
+            barsHTML += '<div class="bar-container" data-subregion="' + item.name + '" title="' + item.name + ': ' + item.total.toFixed(2) + ' km" style="flex:1;display:flex;flex-direction:column;align-items:center;height:100%;min-width:0;position:relative;opacity:' + opacity + ';transition:opacity 0.35s ease;cursor:pointer;">'
+                + '<div class="chart-tooltip" style="position:absolute;bottom:calc(' + height + '% + 10px);background:rgba(11,86,64,0.96);color:white;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(5px);transition:all 0.2s ease;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,0.25);text-align:center;font-family:\'Prompt\',Arial,sans-serif;">'
+                + item.name + '<br>' + item.total.toFixed(2) + ' km</div>'
+                + '<div class="bar" data-target-height="' + height + '" style="width:75%;height:0%;background:' + barBg + ';border-radius:5px 5px 0 0;margin-top:auto;transition:background 0.3s ease,transform 0.22s ease;' + ringStyle + '"></div>'
+                + '<div class="bar-label" style="margin-top:5px;font-size:10px;font-weight:' + labelWeight + ';color:' + labelColor + ';text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-family:\'Prompt\',Arial,sans-serif;transition:color 0.3s ease;">'
+                + item.name + '</div></div>';
+        });
+
+        const clearPillHTML = selected
+            ? '<span id="chart-clear-btn" style="font-size:11px;font-weight:500;color:#018d38;cursor:pointer;padding:2px 10px;border:1.5px solid #018d38;border-radius:12px;background:rgba(1,141,56,0.06);transition:all 0.2s;">&#10005;&nbsp;' + selected + '</span>'
+            : '';
+
+        container.innerHTML = '<div class="chart-container" style="position:relative;width:100%;height:100%;box-sizing:border-box;">'
+            + '<div style="position:absolute;top:0;left:0;right:0;height:32px;padding:4px 10px;font-size:13px;font-weight:600;color:#0b5640;border-bottom:1px solid #d8ede3;box-sizing:border-box;z-index:5;font-family:\'Prompt\',Arial,sans-serif;display:flex;align-items:center;justify-content:space-between;">'
+            + '<span>Longitud por subregión (km)</span>' + clearPillHTML + '</div>'
+            + '<div style="position:absolute;top:32px;left:0;right:0;bottom:0;display:flex;box-sizing:border-box;">'
+            + '<div class="y-axis" style="width:58px;display:flex;flex-direction:column;justify-content:space-between;padding:10px 6px;font-size:11px;color:#0b5640;text-align:right;border-right:1px solid #d8ede3;box-sizing:border-box;">'
+            + this.renderYAxis(maxValue) + '</div>'
+            + '<div class="chart-content" style="flex:1;display:flex;align-items:flex-end;justify-content:space-around;padding:10px 10px 4px 10px;gap:6px;overflow:visible;box-sizing:border-box;">'
+            + barsHTML + '</div></div></div>';
+
+        this._attachChartListeners(container);
+        this.animateBars(800);
     }
 
-    renderMunicipalityChart() {
-        const container = document.querySelector('.graphics-row .graphic:last-child');
-        if (!container) return;
+    _attachChartListeners(container) {
+        const self = this;
 
-        const data = this.getMunicipalityData();
-        if (!data.length) return;
+        const clearBtn = container.querySelector('#chart-clear-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() { self.clearSubregionFilter(); });
+            clearBtn.addEventListener('mouseover', function() { clearBtn.style.background = '#018d38'; clearBtn.style.color = 'white'; });
+            clearBtn.addEventListener('mouseout',  function() { clearBtn.style.background = 'rgba(1,141,56,0.06)'; clearBtn.style.color = '#018d38'; });
+        }
 
-        const maxValue = Math.max(...data.map(d => d.total));
+        container.querySelectorAll('.bar-container').forEach(function(bc) {
+            const subregion = bc.dataset.subregion;
+            const bar     = bc.querySelector('.bar');
+            const tooltip = bc.querySelector('.chart-tooltip');
 
-        container.innerHTML = `
-            <div class="chart-container" style="position:relative;width:100%;height:100%;box-sizing:border-box;overflow:hidden;">
-                <div style="height:28px;padding:4px 10px;font-size:13px;font-weight:600;color:#1a7a5e;border-bottom:1px solid #e0f0e8;box-sizing:border-box;">
-                Longitud por municipio (km)
-                </div>
-                <div class="chart-scroll-container" style="position:absolute;top:28px;left:0;right:0;bottom:22px;overflow-y:auto;overflow-x:hidden;padding:10px;box-sizing:border-box;">
-                    <div class="horizontal-bars" style="display:flex;flex-direction:column;gap:10px;">
-                        ${data.map(item => {
-                            const width = (item.total / maxValue) * 100;
-                            return `
-                                <div class="horizontal-bar-container" style="display:flex;align-items:center;height:38px;padding:0 8px;border-radius:2px;border:1px solid #e0f0e8;background:transparent;position:relative;box-sizing:border-box;cursor:pointer;"
-                                    onmouseover="this.style.borderColor='#2fa87a';const tt=this.querySelector('.chart-tooltip');tt.style.opacity='1';tt.style.transform='translateY(0)';"
-                                    onmouseout="this.style.borderColor='#e0f0e8';const tt=this.querySelector('.chart-tooltip');tt.style.opacity='0';tt.style.transform='translateY(6px)';">
-                                    <div class="chart-tooltip" style="position:absolute;top:-6px;left:150px;background:rgba(26,122,94,0.95);color:white;padding:6px 8px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transform:translateY(6px);transition:all 0.2s ease;z-index:20;box-shadow:0 4px 10px rgba(0,0,0,0.25);">
-                                        ${item.name}<br>${item.total.toFixed(2)} km
-                                    </div>
-                                    <div style="width:130px;font-size:11px;font-weight:500;color:#1a7a5e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">
-                                        ${item.name}
-                                    </div>
-                                    <div style="width:100%;height:20px;margin-left:10px;position:relative;overflow:hidden;">
-                                        <div class="bar-fill" data-target-width="${width}"
-                                            style="height:100%;width:0%;max-width:100%;background:linear-gradient(90deg,${this.colors.primary} 0%,${this.colors.secondary} 100%);border-radius:2px;box-shadow:0 2px 4px rgba(47,168,122,0.35);">
-                                        </div>
-                                    </div>
-                                </div>`;
-                        }).join('')}
-                    </div>
-                </div>
-                <div style="position:absolute;left:160px;right:10px;bottom:0;height:22px;display:flex;justify-content:space-between;font-size:10px;color:#1a7a5e;padding:0 4px;box-sizing:border-box;">
-                    <span>0</span>
-                    <span>${(maxValue / 2).toFixed(1)} km</span>
-                    <span>${maxValue.toFixed(1)} km</span>
-                </div>
-            </div>`;
+            bc.addEventListener('click', function() { self.handleBarClick(subregion); });
 
-        this.animateBars(4000);
-        this.addScrollStyles();
+            bc.addEventListener('mouseover', function() {
+                if (bar)     bar.style.transform     = 'scaleY(1.05) scaleX(1.04)';
+                if (tooltip) { tooltip.style.opacity = '1'; tooltip.style.transform = 'translateY(0)'; }
+            });
+            bc.addEventListener('mouseout', function() {
+                if (bar)     bar.style.transform     = '';
+                if (tooltip) { tooltip.style.opacity = '0'; tooltip.style.transform = 'translateY(5px)'; }
+            });
+        });
+    }
+
+    handleBarClick(subregionName) {
+        if (this.selectedSubregion === subregionName) {
+            this.clearSubregionFilter();
+        } else {
+            this.selectedSubregion = subregionName;
+            this.renderSubregionChart();
+            this._pushFilterToManagers(subregionName);
+        }
+    }
+
+    clearSubregionFilter() {
+        this.selectedSubregion = null;
+        this.renderSubregionChart();
+        this._pushFilterToManagers('');
+    }
+
+    // Inyectar referencia al filtersManager (llamado desde connectManagers o index.html)
+    setFiltersManager(fm) {
+        this._filtersManager = fm;
+    }
+
+    // Propaga a filtersManager; el flag evita que updateCharts() reactive este método
+    _pushFilterToManagers(value) {
+        const fm = this._filtersManager || window.filtersManager;
+        if (this._pushing || !fm) return;
+        this._pushing = true;
+
+        const select = document.getElementById('subregion-filter');
+        if (select) select.value = value;
+
+        fm.filters.subregion = value;
+        fm.applyFilters();
+
+        this._pushing = false;
+    }
+
+    // Sincronización inversa: dropdown → gráfica (sin disparar applyFilters de nuevo)
+    setSelectedSubregion(subregionName) {
+        this.selectedSubregion = subregionName || null;
+        this.renderSubregionChart();
+    }
+
+    // Llamado por filtersManager.updateComponents()
+    // newData son los datos ya filtrados — los guardamos para stats/cards
+    // pero la gráfica SIEMPRE dibuja todas las subregiones desde window.jacData
+    updateCharts(newData) {
+        // Si el propio clic en barra disparó este ciclo, ignorarlo —
+        // la gráfica ya se re-renderizó en handleBarClick
+        if (this._pushing) return;
+        this.data = newData;
+        // Solo re-renderizar si NO hay selección activa (la selección
+        // ya llamó renderSubregionChart con el estado correcto)
+        if (!this.selectedSubregion) {
+            this.renderSubregionChart();
+        }
+        this.renderMunicipalityChart();
     }
 
     addScrollStyles() {
         if (document.getElementById('charts-scroll-styles')) return;
         const style = document.createElement('style');
         style.id = 'charts-scroll-styles';
-        style.textContent = `
-            .chart-scroll-container::-webkit-scrollbar { width: 6px; }
-            .chart-scroll-container::-webkit-scrollbar-track { background: #e0f0e8; border-radius: 3px; }
-            .chart-scroll-container::-webkit-scrollbar-thumb { background: #2fa87a; border-radius: 3px; }
-            .chart-scroll-container::-webkit-scrollbar-thumb:hover { background: #1a7a5e; }
-        `;
+        style.textContent = '.chart-scroll-container::-webkit-scrollbar{width:6px}.chart-scroll-container::-webkit-scrollbar-track{background:#d8ede3;border-radius:3px}.chart-scroll-container::-webkit-scrollbar-thumb{background:#018d38;border-radius:3px}.chart-scroll-container::-webkit-scrollbar-thumb:hover{background:#0b5640}';
         document.head.appendChild(style);
     }
 
-    updateCharts(newData) {
-        this.data = newData;
-        this.renderSubregionChart();
-        this.renderMunicipalityChart();
-    }
-
     getStats() {
-        const totalLongitud = this.data.reduce((s, item) => s + (parseFloat(item['Longitud(m)']) || 0), 0);
+        const totalLongitud = this.data.reduce(function(s, item) { return s + (parseFloat(item['Longitud(m)']) || 0); }, 0);
         return {
-            totalTramos: this.data.length,
+            totalTramos:   this.data.length,
             totalLongitud: Math.round(totalLongitud * 10) / 10,
-            subregiones: new Set(this.data.map(item => item.SUBREGION)).size,
-            municipios: new Set(this.data.map(item => item.MPIO_NOMBRE)).size
+            subregiones:   new Set(this.data.map(function(i) { return i.SUBREGION; })).size,
+            municipios:    new Set(this.data.map(function(i) { return i.MPIO_NOMBRE; })).size
         };
     }
 
-    filterData(filters = {}) {
-        let filtered = [...this.data];
-        if (filters.subregion) filtered = filtered.filter(i => i.SUBREGION === filters.subregion);
-        if (filters.municipio) filtered = filtered.filter(i => i.MPIO_NOMBRE === filters.municipio);
+    filterData(filters) {
+        filters = filters || {};
+        let filtered = this.data.slice();
+        if (filters.subregion)  filtered = filtered.filter(function(i) { return i.SUBREGION === filters.subregion; });
+        if (filters.municipio)  filtered = filtered.filter(function(i) { return i.MPIO_NOMBRE === filters.municipio; });
         if (filters.searchTerm) {
             const term = filters.searchTerm.toLowerCase();
-            filtered = filtered.filter(i => Object.values(i).some(v => String(v).toLowerCase().includes(term)));
+            filtered = filtered.filter(function(i) { return Object.values(i).some(function(v) { return String(v).toLowerCase().includes(term); }); });
         }
-        const tempManager = new ChartsManager(filtered);
-        tempManager.colors = this.colors;
-        tempManager.renderSubregionChart();
-        tempManager.renderMunicipalityChart();
+        const tmp = new ChartsManager(filtered);
+        tmp.colors = this.colors;
+        tmp.renderSubregionChart();
+        tmp.renderMunicipalityChart();
         return filtered;
     }
 
     integrateWithMap(mapManager) {
-        setTimeout(() => {
-            const bars = document.querySelectorAll('.graphics-row .graphic:first-child .bar');
-            bars.forEach((bar, index) => {
-                const subregionData = this.getSubregionData();
-                if (subregionData[index]) {
-                    bar.addEventListener('click', () => {
-                        if (mapManager && mapManager.filterMunicipiosBySubregion) {
-                            mapManager.filterMunicipiosBySubregion(subregionData[index].name.toUpperCase());
-                        }
-                    });
-                }
-            });
-            const municipalityBars = document.querySelectorAll('.horizontal-bar-container');
-            municipalityBars.forEach((bar, index) => {
-                const municipalityData = this.getMunicipalityData();
-                if (municipalityData[index]) {
-                    bar.addEventListener('click', () => {
-                        if (mapManager && mapManager.highlightMunicipio) {
-                            mapManager.highlightMunicipio(municipalityData[index].name);
-                        }
+        const self = this;
+        setTimeout(function() {
+            document.querySelectorAll('.horizontal-bar-container').forEach(function(bar, i) {
+                const municipalityData = self.getMunicipalityData ? self.getMunicipalityData() : [];
+                if (municipalityData[i]) {
+                    bar.addEventListener('click', function() {
+                        if (mapManager && mapManager.highlightMunicipio) mapManager.highlightMunicipio(municipalityData[i].name);
                     });
                 }
             });
         }, 1000);
     }
+
+    renderMunicipalityChart() { /* placeholder */ }
 }
 
 window.ChartsUtils = {
     syncWithTableFilters: function(tableManager, chartsManager) {
-        if (!tableManager || !chartsManager) return;
-        chartsManager.updateCharts(tableManager.filteredData || tableManager.data);
+        if (tableManager && chartsManager) chartsManager.updateCharts(tableManager.filteredData || tableManager.data);
     },
     showStats: function(chartsManager) {
         if (!chartsManager) return;
@@ -253,6 +265,6 @@ window.ChartsUtils = {
         return stats;
     },
     highlightData: function(chartsManager, municipio) {
-        console.log(`🎯 Resaltar en gráficas: ${municipio}`);
+        console.log('Resaltar en gráficas: ' + municipio);
     }
 };

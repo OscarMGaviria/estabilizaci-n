@@ -67,7 +67,10 @@ class FiltersManager {
         const header = document.querySelector('.header');
         header.innerHTML = `
             <div class="header-content">
-                <h1>Secretaría de Infraestructura Física</h1>
+                <div class="header-brand">
+                    <div class="header-brand-main">ESTABILIZACIÓN VIAL</div>
+                    <div class="header-brand-sub">Secretaría de Infraestructura Física</div>
+                </div>
                 <div class="filters-container" id="filters-container">
                     <div class="filters-row">
 
@@ -150,9 +153,12 @@ class FiltersManager {
         style.id = styleId;
         style.textContent = `
             .header { padding:12px 20px !important; height:60px !important; min-height:60px; }
+            .header-brand { display:flex; flex-direction:column; justify-content:center; gap:1px; flex-shrink:0; }
+            .header-brand-main { font-size:18px; font-weight:800; color:#ffffff; letter-spacing:1.5px; text-transform:uppercase; line-height:1.1; font-family:'Prompt',Arial,sans-serif; }
+            .header-brand-sub { font-size:10px; font-weight:500; color:rgba(58,249,162,0.85); letter-spacing:0.8px; text-transform:uppercase; font-family:'Prompt',Arial,sans-serif; }
             .header-content { display:flex; align-items:center; justify-content:space-between; height:100%; gap:20px; }
             .header h1 { margin:0; font-size:20px; font-weight:600; white-space:nowrap; flex-shrink:0; }
-            .filters-container { display:flex; flex-direction:column; gap:6px; flex:1; }
+            .filters-container { display:flex; flex-direction:column; gap:4px; flex-shrink:0; margin-left:auto; }
             .filters-row { display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
             .filter-group { position:relative; min-width:130px; flex-shrink:0; }
             .filter-group.range-group { display:flex; align-items:center; gap:6px; min-width:190px; }
@@ -282,16 +288,24 @@ class FiltersManager {
         if (!this.mapManager) return;
         try {
             if (this.mapManager.resetMunicipiosStyle) this.mapManager.resetMunicipiosStyle();
+
             const municipiosFiltrados = [...new Set(this.filteredData.map(item => item.MPIO_NOMBRE))];
+            const hayFiltroActivo = this.filters.subregion || this.filters.municipio ||
+                                    this.filters.contratista || this.filters.search;
+
+            // Resaltar municipios con tramos filtrados
             if (this.filters.municipio && municipiosFiltrados.length === 1) {
                 if (this.mapManager.highlightMunicipio) this.mapManager.highlightMunicipio(this.filters.municipio, true);
             } else if (municipiosFiltrados.length > 0) {
                 municipiosFiltrados.forEach(m => {
                     if (this.mapManager.highlightMunicipio) this.mapManager.highlightMunicipio(m, false);
                 });
-                if (municipiosFiltrados.length <= 5 && municipiosFiltrados.length > 1) {
-                    this.zoomToFilteredMunicipalities(municipiosFiltrados);
-                }
+            }
+
+            // Zoom solo si hay filtro activo — al limpiar, clearFilters() ya hizo fitBounds instantáneo
+            if (hayFiltroActivo && this.mapManager.zoomToMunicipios) {
+                const subregiones = [...new Set(this.filteredData.map(item => item.SUBREGION).filter(Boolean))];
+                this.mapManager.zoomToMunicipios(municipiosFiltrados, subregiones);
             }
         } catch (error) {
             console.error('Error actualizando mapa:', error);
@@ -371,6 +385,13 @@ class FiltersManager {
         ['search-filter','subregion-filter','municipio-filter','contratista-filter','min-avance-filter','max-avance-filter']
             .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         this.updateMunicipioOptions('');
+        // Resetear gráfica de subregiones
+        if (this.chartsManager?.setSelectedSubregion) this.chartsManager.setSelectedSubregion(null);
+        // Zoom INSTANTÁNEO al estado inicial — sin animación
+        if (this.mapManager?.map) {
+            this.mapManager.map.fitBounds([[4.8,-77.2],[8.8,-73.8]], { padding:[20,20], animate:false });
+            if (this.mapManager.resetMunicipiosStyle) this.mapManager.resetMunicipiosStyle();
+        }
         this.applyFilters();
         console.log('🧹 Filtros limpiados');
     }
@@ -410,6 +431,10 @@ class FiltersManager {
         this.tableManager   = managers.tableManager   || null;
         this.chartsManager  = managers.chartsManager  || null;
         this.cardsManager   = managers.cardsManager   || null;
+        // Inyectar referencia recíproca para que chartsManager pueda disparar filtros
+        if (this.chartsManager?.setFiltersManager) {
+            this.chartsManager.setFiltersManager(this);
+        }
         console.log('🔗 FiltersManager conectado');
     }
     

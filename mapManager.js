@@ -674,9 +674,11 @@ class MapManager {
             [4.8, -77.2],
             [8.8, -73.8]
         ];
-        
-        this.map.fitBounds(antioquiaBounds, {
-            padding: [20, 20]
+
+        this.map.flyToBounds(antioquiaBounds, {
+            padding: [20, 20],
+            duration: 1.2,
+            easeLinearity: 0.25
         });
     }
 
@@ -866,7 +868,7 @@ class MapManager {
                     const label = key.replace(/_/g, ' ').toUpperCase();
                     const value = props[key];
                     
-                    if (key === 'MPIO_NOMBRE' || key === 'MUNICIPIO' || key === 'nombre') {
+                    if (key === 'mpio_nombr' || key === 'MPIO_NOMBRE' || key === 'MUNICIPIO' || key === 'nombre') {
                         popupContent += `<strong style="color: #1a7a5e; font-size: 16px;">${value}</strong><br>`;
                     } else {
                         popupContent += `<strong>${label}:</strong> ${value}<br>`;
@@ -948,7 +950,7 @@ class MapManager {
 
         layer.eachLayer((municipioLayer) => {
             const props = municipioLayer.feature.properties;
-            const nombre = props.MPIO_NOMBRE || props.MUNICIPIO || props.nombre;
+            const nombre = props.mpio_nombr || props.MPIO_NOMBRE || props.MUNICIPIO || props.nombre;
             
             if (nombre && nombre.toUpperCase() === municipioNombre.toUpperCase()) {
                 municipioLayer.setStyle({
@@ -958,7 +960,7 @@ class MapManager {
                     color: '#dc143c'
                 });
                 
-                this.map.fitBounds(municipioLayer.getBounds(), { padding: [50, 50] });
+                // El zoom lo maneja zoomToMunicipios — no hacer fitBounds aquí
             } else {
                 municipioLayer.setStyle({
                     fillOpacity: 0.1,
@@ -966,6 +968,67 @@ class MapManager {
                 });
             }
         });
+    }
+
+    // Normaliza texto: mayúsculas sin tildes para comparar con el GeoJSON
+    _normalizeText(str) {
+        return (str || '').toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    // Zoom al bounds de las subregiones filtradas buscando directamente
+    // en la capa GeoJSON por la propiedad SUBREGION (más confiable que MPIO_NOMBRE)
+    zoomToMunicipios(municipiosNombres, subregionesNombres) {
+        const layer = this.additionalLayers['municipios'];
+        if (!layer) return;
+
+        const sinFiltro = (!subregionesNombres || subregionesNombres.length === 0) &&
+                          (!municipiosNombres   || municipiosNombres.length === 0);
+
+        if (sinFiltro) {
+            this.setAntioquiaView();
+            return;
+        }
+
+        // Normalizar los nombres para comparación robusta
+        const subregSet = new Set(
+            (subregionesNombres || []).map(s => this._normalizeText(s))
+        );
+        const mpioSet = new Set(
+            (municipiosNombres || []).map(m => this._normalizeText(m))
+        );
+
+        let combinedBounds = null;
+
+        layer.eachLayer((municipioLayer) => {
+            const props    = municipioLayer.feature.properties;
+            const subreg   = this._normalizeText(props.subregion || props.SUBREGION);
+            const mpio     = this._normalizeText(props.mpio_nombr || props.MPIO_NOMBRE || props.MUNICIPIO || props.nombre);
+
+            const match = (subregSet.size > 0 && subregSet.has(subreg)) ||
+                          (mpioSet.size > 0   && mpioSet.has(mpio));
+
+            if (match) {
+                const bounds = municipioLayer.getBounds();
+                if (bounds.isValid()) {
+                    combinedBounds = combinedBounds
+                        ? combinedBounds.extend(bounds)
+                        : L.latLngBounds(bounds);
+                }
+            }
+        });
+
+        if (combinedBounds && combinedBounds.isValid()) {
+            this.map.flyToBounds(combinedBounds, {
+                padding: [40, 40],
+                maxZoom: 11,
+                duration: 1.2,
+                easeLinearity: 0.25
+            });
+        } else {
+            this.setAntioquiaView();
+        }
     }
 
     resetMunicipiosStyle() {
@@ -991,7 +1054,7 @@ class MapManager {
         layer.eachLayer((municipioLayer) => {
             const props = municipioLayer.feature.properties;
             municipios.push({
-                nombre: props.MPIO_NOMBRE || props.MUNICIPIO || props.nombre,
+                nombre: props.mpio_nombr || props.MPIO_NOMBRE || props.MUNICIPIO || props.nombre,
                 subregion: props.SUBREGION,
                 codigo: props.COD_MPIO
             });
