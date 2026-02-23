@@ -81,9 +81,8 @@ class CardsManager {
     }
 
     calculateLongitudTotal() {
-        // Campo "Longitud(m)" contiene valores en km pese al nombre
         const total = this.filteredData.reduce((sum, item) => sum + (parseFloat(item['Longitud(m)']) || 0), 0);
-        return Math.round(total * 100) / 100;
+        return parseFloat(total.toFixed(2));
     }
 
     calculateValorTotal() {
@@ -330,7 +329,7 @@ class CardsManager {
             case 'percent':
                 return value.toFixed(1);
             case 'distance':
-                return new Intl.NumberFormat(this.options.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+                return new Intl.NumberFormat(this.options.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
             default:
                 return new Intl.NumberFormat(this.options.locale).format(value);
         }
@@ -486,7 +485,7 @@ class CardsManager {
 
     /* ── Helpers de datos ── */
     _fmtKm(val) {
-        return (Math.round((parseFloat(val) || 0) * 100) / 100).toLocaleString('es-CO', {minimumFractionDigits:1, maximumFractionDigits:1});
+        return (Math.round((parseFloat(val) || 0) * 100) / 100).toLocaleString('es-CO', {minimumFractionDigits:2, maximumFractionDigits:2});
     }
 
     /* ── Tramos: Municipio + Vía ── */
@@ -517,7 +516,7 @@ class CardsManager {
         const totals = {};
         data.forEach(d => {
             const m = d.MPIO_NOMBRE || 'Sin municipio';
-            totals[m] = (totals[m] || 0) + (parseFloat(d['Longitud(m)']) || 0);
+            totals[m] = (totals[m] || 0) + (parseFloat(d['Longitud (km)']) || 0);
         });
         const sorted = Object.entries(totals)
             .map(([mpio, km]) => ({ mpio, km: Math.round(km * 100) / 100 }))
@@ -617,7 +616,7 @@ class CardsManager {
         data.forEach(d => {
             const key = d.CIRCUITO || d.NOMBRE_VIA || '—';
             if (!vias[key]) vias[key] = { mpio: d.MPIO_NOMBRE || '—', km: 0 };
-            vias[key].km += parseFloat(d['Longitud(m)']) || 0;
+            vias[key].km += parseFloat(d['Longitud (km)']) || 0;
         });
 
         const sorted = Object.entries(vias)

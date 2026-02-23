@@ -171,14 +171,14 @@ class ChartsManager {
         const fm = this._filtersManager || window.filtersManager;
         if (this._pushing || !fm) return;
         this._pushing = true;
-
-        const select = document.getElementById('subregion-filter');
-        if (select) select.value = value;
-
-        fm.filters.subregion = value;
-        fm.applyFilters();
-
-        this._pushing = false;
+        try {
+            const select = document.getElementById('subregion-filter');
+            if (select) select.value = value;
+            fm.filters.subregion = value;
+            fm.applyFilters();
+        } finally {
+            this._pushing = false;
+        }
     }
 
     // Sincronización inversa: dropdown → gráfica (sin disparar applyFilters de nuevo)
@@ -195,11 +195,8 @@ class ChartsManager {
         // la gráfica ya se re-renderizó en handleBarClick
         if (this._pushing) return;
         this.data = newData;
-        // Solo re-renderizar si NO hay selección activa (la selección
-        // ya llamó renderSubregionChart con el estado correcto)
-        if (!this.selectedSubregion) {
-            this.renderSubregionChart();
-        }
+        // Siempre re-renderizar para que los listeners queden frescos
+        this.renderSubregionChart();
         this.renderMunicipalityChart();
     }
 

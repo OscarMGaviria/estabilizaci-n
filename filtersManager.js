@@ -68,8 +68,11 @@ class FiltersManager {
         header.innerHTML = `
             <div class="header-content">
                 <div class="header-brand">
-                    <div class="header-brand-main">ESTABILIZACIÓN VIAL</div>
-                    <div class="header-brand-sub">Secretaría de Infraestructura Física</div>
+                    <img class="logo" src="Logos Gobernación-06.png" alt="" style="height:80px;width:auto;object-fit:contain;flex-shrink:0;">
+                    <div>
+                        <div class="header-brand-main">ESTABILIZACIÓN VIAL</div>
+                        <div class="header-brand-sub">Secretaría de Infraestructura Física</div>
+                    </div>
                 </div>
                 <div class="filters-container" id="filters-container">
                     <div class="filters-row">
@@ -136,10 +139,7 @@ class FiltersManager {
                         </div>
                     </div>
 
-                    <!-- Filtros activos -->
-                    <div class="active-filters" id="active-filters" style="display:none;">
-                        <div class="filter-tags" id="filter-tags"></div>
-                    </div>
+
                 </div>
             </div>
         `;
@@ -153,7 +153,7 @@ class FiltersManager {
         style.id = styleId;
         style.textContent = `
             .header { padding:12px 20px !important; height:60px !important; min-height:60px; }
-            .header-brand { display:flex; flex-direction:column; justify-content:center; gap:1px; flex-shrink:0; }
+            .header-brand { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:10px; flex-shrink:0; }
             .header-brand-main { font-size:18px; font-weight:800; color:#ffffff; letter-spacing:1.5px; text-transform:uppercase; line-height:1.1; font-family:'Prompt',Arial,sans-serif; }
             .header-brand-sub { font-size:10px; font-weight:500; color:rgba(58,249,162,0.85); letter-spacing:0.8px; text-transform:uppercase; font-family:'Prompt',Arial,sans-serif; }
             .header-content { display:flex; align-items:center; justify-content:space-between; height:100%; gap:20px; }
@@ -275,41 +275,22 @@ class FiltersManager {
     
     updateComponents() {
         try {
-            if (this.tableManager?.applyFilters)   this.tableManager.applyFilters(this.filteredData);
-            if (this.cardsManager?.applyFilters)    this.cardsManager.applyFilters(this.filteredData);
-            if (this.chartsManager?.updateCharts)   this.chartsManager.updateCharts(this.filteredData);
-            if (this.mapManager)                    this.updateMapHighlights();
+            if (this.tableManager?.applyFilters)  this.tableManager.applyFilters(this.filteredData);
+            if (this.cardsManager?.applyFilters)  this.cardsManager.applyFilters(this.filteredData);
+            if (this.chartsManager?.updateCharts) this.chartsManager.updateCharts(this.filteredData);
+            if (this.mapManager?.syncMapWithFilter) {
+                const hayFiltro = !!(this.filters.subregion || this.filters.municipio ||
+                                     this.filters.contratista || this.filters.search ||
+                                     this.filters.minAvance !== null || this.filters.maxAvance !== null);
+                this.mapManager.syncMapWithFilter(this.filteredData, hayFiltro);
+            }
         } catch (error) {
             console.error('Error actualizando componentes:', error);
         }
     }
     
     updateMapHighlights() {
-        if (!this.mapManager) return;
-        try {
-            if (this.mapManager.resetMunicipiosStyle) this.mapManager.resetMunicipiosStyle();
-
-            const municipiosFiltrados = [...new Set(this.filteredData.map(item => item.MPIO_NOMBRE))];
-            const hayFiltroActivo = this.filters.subregion || this.filters.municipio ||
-                                    this.filters.contratista || this.filters.search;
-
-            // Resaltar municipios con tramos filtrados
-            if (this.filters.municipio && municipiosFiltrados.length === 1) {
-                if (this.mapManager.highlightMunicipio) this.mapManager.highlightMunicipio(this.filters.municipio, true);
-            } else if (municipiosFiltrados.length > 0) {
-                municipiosFiltrados.forEach(m => {
-                    if (this.mapManager.highlightMunicipio) this.mapManager.highlightMunicipio(m, false);
-                });
-            }
-
-            // Zoom solo si hay filtro activo — al limpiar, clearFilters() ya hizo fitBounds instantáneo
-            if (hayFiltroActivo && this.mapManager.zoomToMunicipios) {
-                const subregiones = [...new Set(this.filteredData.map(item => item.SUBREGION).filter(Boolean))];
-                this.mapManager.zoomToMunicipios(municipiosFiltrados, subregiones);
-            }
-        } catch (error) {
-            console.error('Error actualizando mapa:', error);
-        }
+        // Delegado a syncMapWithFilter — ver updateComponents
     }
     
     zoomToFilteredMunicipalities(municipios) {
@@ -385,14 +366,16 @@ class FiltersManager {
         ['search-filter','subregion-filter','municipio-filter','contratista-filter','min-avance-filter','max-avance-filter']
             .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         this.updateMunicipioOptions('');
-        // Resetear gráfica de subregiones
+        // Resetear selección visual en gráfica
         if (this.chartsManager?.setSelectedSubregion) this.chartsManager.setSelectedSubregion(null);
-        // Zoom INSTANTÁNEO al estado inicial — sin animación
-        if (this.mapManager?.map) {
-            this.mapManager.map.fitBounds([[4.8,-77.2],[8.8,-73.8]], { padding:[20,20], animate:false });
-            if (this.mapManager.resetMunicipiosStyle) this.mapManager.resetMunicipiosStyle();
+        // syncMapWithFilter([], false) resetea mapa instantáneamente sin animación
+        if (this.mapManager?.syncMapWithFilter) {
+            this.mapManager.syncMapWithFilter([], false);
         }
-        this.applyFilters();
+        // applyFilters actualiza tabla, cards y gráficas (sin llamar al mapa de nuevo)
+        this.filteredData = [...this.data];
+        this.updateComponents();
+        this.updateActiveFilters();
         console.log('🧹 Filtros limpiados');
     }
     

@@ -566,6 +566,8 @@ body {
 .modal-body::-webkit-scrollbar-track { background: var(--fondo-alt); }
 .modal-body::-webkit-scrollbar-thumb { background: var(--verde); border-radius: 3px; }
 
+
+
 .checkbox-label {
     display: block;
     padding: 11px 12px;

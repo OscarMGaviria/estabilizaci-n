@@ -17,7 +17,7 @@
     <div class="container">
         <!-- Header (será reemplazado por FiltersManager) -->
         <header class="header">
-            <h1>Secretaría de Infraestructura Física</h1>
+            
         </header>
 
         <!-- Area Contenedor (Mapa, Cards y Gráficas) -->
@@ -135,6 +135,9 @@
                     chartsManager: chartsManager,
                     cardsManager: cardsManager
                 });
+
+                // Permitir que el mapa filtre el dashboard al hacer clic en municipio
+                if (mapManager.setFiltersManager) mapManager.setFiltersManager(filtersManager);
                 
                 // Inicializar íconos de expansión
                 expandIconsManager = new ExpandIconsManager();
