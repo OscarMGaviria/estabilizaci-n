@@ -41,10 +41,10 @@ class MapManager {
             attributionControl: false,
             scrollWheelZoom: true,
             wheelPxPerZoomLevel: 180,
-            zoomSnap: 1,         
-            zoomDelta: 1,
-            maxZoom: 13,
-            minZoom: 8.3
+            zoomSnap: 0.25,         
+            zoomDelta: 0.25,
+            maxZoom: 18,
+            minZoom: 6
         });
 
         // === PANES PARA CONTROLAR ORDEN DE CAPAS ===
@@ -508,92 +508,55 @@ class MapManager {
     }
 
     bindPopup(feature, layer) {
-        if (feature.properties) {
-            const props = feature.properties;
-            let popupContent = '<div style="font-family: Arial; max-width: 300px;">';
-            
-            if (props.source) {
-                popupContent += `<strong style="color: #1a7a5e; font-size: 14px;">${props.source}</strong><br>`;
-            }
-            
-            if (props.name) {
-                popupContent += `<strong>Tramo:</strong> ${props.name}<br>`;
-            }
+        if (!feature.properties) return;
 
-            // Agregar coordenadas
-            if (feature.geometry.type === 'Point') {
-                const coords = feature.geometry.coordinates;
-                popupContent += `<strong>Coordenadas:</strong><br>`;
-                popupContent += `Lat: ${coords[1].toFixed(6)}<br>`;
-                popupContent += `Lon: ${coords[0].toFixed(6)}<br>`;
-            } else if (feature.geometry.type === 'LineString' || feature.geometry.type === 'MultiLineString') {
-                const coords = feature.geometry.coordinates;
-                let firstCoords;
-                if (feature.geometry.type === 'LineString') {
-                    firstCoords = coords;
-                } else {
-                    firstCoords = coords[0];
-                }
-                const length = this.calculateLineLength(firstCoords);
-                popupContent += `<strong>Longitud aprox:</strong> ${length.toFixed(2)} m<br>`;
-                
-                // Botón para ver fotos si es una línea (placa huella)
-                if (props.source) {
-                    // Extraer solo el código de convenio del source
-                    const convenioCode = props.source.match(/25AS\w*B\d+/);
-                    const finalCode = convenioCode ? convenioCode[0] : props.id || props.name;
-                    
-                    popupContent += `
-                        <div style="margin-top: 15px; text-align: center;">
-                            <button 
-                                onclick="
-                                    console.log('🔍 Abriendo modal para:', '${finalCode}');
-                                    if (window.photoModalManager) {
-                                        window.photoModalManager.openModal('${finalCode}', '${props.name || 'Tramo'}');
-                                    } else {
-                                        alert('Error: Modal de fotos no disponible');
-                                    }
-                                " 
-                                style="
-                                    background: #2fa87a;
-                                    color: white;
-                                    border: none;
-                                    padding: 8px 16px;
-                                    border-radius: 8px;
-                                    cursor: pointer;
-                                    font-weight: 600;
-                                    transition: all 0.3s ease;
-                                    box-shadow: 0 2px 4px rgba(47, 168, 122, 0.3);
-                                "
-                                onmouseover="this.style.background='#1a7a5e'"
-                                onmouseout="this.style.background='#2fa87a'"
-                            >
-                                <i class="fas fa-camera" style="margin-right: 5px;"></i>
-                                Ver Fotos
-                            </button>
-                        </div>
-                    `;
-                }
-            }
+        const props = feature.properties;
+        const isLine = feature.geometry.type === 'LineString' || feature.geometry.type === 'MultiLineString';
 
-            popupContent += '</div>';
-            
-            layer.bindPopup(popupContent, {
-                maxWidth: 300,
-                className: 'custom-popup'
+        if (isLine) {
+            // Cursor de mano para indicar que es clickeable
+            layer.on('add', function() {
+                if (this._path) this._path.style.cursor = 'pointer';
             });
 
-            // Hover: guardar estilo actual, restaurarlo al salir
-            if (feature.geometry.type === 'LineString' || feature.geometry.type === 'MultiLineString') {
-                layer.on('mouseover', function() {
-                    const o = this.options;
-                    this._preHoverStyle = { color: o.color||'#FFD600', weight: o.weight||5, opacity: o.opacity||0.95 };
-                    this.setStyle({ color: '#ffffff', weight: 7, opacity: 1 });
-                });
-                layer.on('mouseout', function() {
-                    this.setStyle(this._preHoverStyle || { color:'#FFD600', weight:5, opacity:0.95 });
-                });
-            }
+            // Clic → abrir TramoModal
+            layer.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                const modal = window.tramoModal;
+                if (modal) {
+                    modal.openFromFeature(feature);
+                } else {
+                    console.warn('TramoModal no está disponible en window.tramoModal');
+                }
+            });
+
+            // Hover: resaltar y mostrar tooltip rápido con el nombre
+            layer.on('mouseover', function() {
+                const o = this.options;
+                this._preHoverStyle = { color: o.color||'#FFD600', weight: o.weight||5, opacity: o.opacity||0.95 };
+                this.setStyle({ color: '#ffffff', weight: 8, opacity: 1 });
+            });
+            layer.on('mouseout', function() {
+                this.setStyle(this._preHoverStyle || { color:'#FFD600', weight:5, opacity:0.95 });
+            });
+
+            // Tooltip ligero con nombre del tramo
+            const nombre = props.name || props.CIRCUITO || props.NOMBRE_VIA || 'Tramo';
+            layer.bindTooltip(`<span style="font-weight:700;">${nombre}</span><br><small style="opacity:0.75;">Clic para ver detalle</small>`, {
+                permanent: false,
+                direction: 'top',
+                className: 'municipio-tooltip',
+                sticky: true
+            });
+
+        } else if (feature.geometry.type === 'Point') {
+            // Puntos: mantener comportamiento original con coordenadas
+            const coords = feature.geometry.coordinates;
+            let content = `<div style="font-family:Arial;max-width:240px;">`;
+            if (props.source) content += `<strong style="color:#1a7a5e;">${props.source}</strong><br>`;
+            if (props.name)   content += `<strong>Tramo:</strong> ${props.name}<br>`;
+            content += `<small>Lat: ${coords[1].toFixed(6)} · Lon: ${coords[0].toFixed(6)}</small></div>`;
+            layer.bindPopup(content, { maxWidth: 260 });
         }
     }
 

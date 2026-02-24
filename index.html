@@ -17,7 +17,7 @@
     <div class="container">
         <!-- Header (será reemplazado por FiltersManager) -->
         <header class="header">
-            
+            <h1>Secretaría de Infraestructura Física</h1>
         </header>
 
         <!-- Area Contenedor (Mapa, Cards y Gráficas) -->
@@ -66,6 +66,7 @@
     <script src="expandIconsManager.js"></script>
     <script src="detailModal.js"></script>
     <script src="photoModalManager.js"></script>
+    <script src="tramoModal.js"></script>
     <script>
         // Variables globales
         let mapManager;
@@ -96,6 +97,10 @@
             
             // Inicializar mapa con el archivo GeoJSON de rutas
             mapManager = new MapManager('mapContainer', 'localizacion.geojson');
+
+            // Inicializar modal de detalle de tramo
+            window.tramoModal = new TramoModal();
+            window.tramoModal.setData(jacData);
             
             // Inicializar manager de gráficas
             chartsManager = new ChartsManager(jacData);
